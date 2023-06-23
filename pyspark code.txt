@@ -1,0 +1,72 @@
+#importing the libraries
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import mean
+from pyspark.sql.functions import min, max
+from pyspark.sql.functions import corr
+from pyspark.sql.functions import (dayofmonth, hour,dayofyear, month,year, weekofyear,format_number, date_format)
+
+#creating a spark session
+spark = SparkSession.builder \
+      .master("local[1]") \
+      .appName("lahasya") \
+      .getOrCreate()
+
+#rdds
+dataList = [("Java", 20000), ("Python", 100000), ("Scala", 3000)]
+rdd=spark.sparkContext.parallelize(dataList)
+
+#CSV file
+df = spark.read.csv("/root/airflow/dags/Input/timberland_stock.csv,header = True")
+df.print.Schema()
+
+#show
+df.show()
+
+#1 what day had a peak high in price
+peak_high = df.orderBy(df['High'].desc()).select(['Date']).head(1)[0]['Date']
+
+#2 what is the mean of the close column
+mean_close_column = df.select(mean('Close')).show()
+
+#3 what is the max and min of the volume column
+max_min = df.select(max('Volume'),min('Volume')).show()
+
+#4 how many days was the close lower than 60 dollars
+lower_60dollars = df.filter(df['Close'] < 60).count()
+
+#5 what percentage of the time was the high greater than 80 dollars
+high_80dollars = df.filter('High > 80').count() * 100/df.count()
+
+#6 what is the pearson correlation between high and volume
+df = df.withColumn("year", year(df.Date))
+df = df.withColumn("month", month(df.Date))
+df = df.withColumn("day", dayofmonth(df.Date))
+df.show(10)
+pearson_correlation = df.select(corr(df['High'], df['Volume'])).show()
+
+#7 what is the max high per year
+#creating  a temp location
+df.createOrReplaceTempView("timber")
+max_high_per_year = spark.sql("select year, max(High) as max_high from timber group by year")
+max_high_per_year.show()
+
+#8 what is the average close for each calendar month
+avg_close_per_month = spark.sql("select month, avg(Close) as avg_close_monthly from timber group by month")
+avg_close_per_month.show()
+
+#output
+peak_high.write.csv('/root/airflow/dags/output/peak_high.csv', mode='overwrite', header=True)
+
+mean_close_column.write.csv('/root/airflow/dags/output/mean_close_column.csv', mode='overwrite', header=True)
+
+max_min.write.csv('/root/airflow/dags/output/max_min.csv', mode='overwrite', header=True)
+
+lower_60dollars.write.csv('/root/airflow/dags/output/lower_60dollars.csv', mode='overwrite', header=True)
+
+high_80dollars.write.csv('/root/airflow/dags/output/high_80dollars.csv', mode='overwrite', header=True)
+
+pearson_correlation.write.csv('/root/airflow/dags/output/pearson_correlation.csv', mode='overwrite', header=True)
+
+max_high_per_year.write.csv('/root/airflow/dags/output/max_high_per_year.csv', mode='overwrite', header=True)
+
+avg_close_per_month.write.csv('/root/airflow/dags/output/avg_close_per_month.csv', mode='overwrite', header=True)
